@@ -14,7 +14,7 @@ import (
 	"github.com/sirupsen/logrus"
 )
 
-func executeSnapshot(config structs.Config, snapshotConfig structs.SnapshotConfig) error {
+func ExecuteSnapshot(config structs.Config, snapshotConfig structs.SnapshotConfig) error {
 	snapshotLogPrefix := "[" + snapshotConfig.SnapshotName + "] "
 	before := time.Now().UnixMilli()
 	if len(snapshotConfig.PreSnapshotCommands) > 0 {
