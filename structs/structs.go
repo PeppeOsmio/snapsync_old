@@ -20,5 +20,4 @@ type SnapshotConfig struct {
 type SnapshotDir struct {
 	SrcDir   string   `yaml:"src_dir"`
 	Excludes []string `yaml:"excludes"`
-	DstDir   string   `yaml:"dst_dir"`
 }

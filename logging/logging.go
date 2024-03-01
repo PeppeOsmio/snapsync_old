@@ -24,5 +24,5 @@ func (hook ContextHook) Fire(entry *logrus.Entry) error {
 }
 
 func SetupLogging() {
-	logrus.AddHook(ContextHook{})
+	// logrus.AddHook(ContextHook{})
 }

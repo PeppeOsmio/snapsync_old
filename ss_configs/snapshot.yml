@@ -1,0 +1,11 @@
+snapshot_name: adguardhome
+dirs:
+  - src_dir: ./adguardhome
+snapshots_dir: ./ss/adguardhome
+interval: daily
+retention: 7
+cron: "0 12,21 * * *"
+pre_snapshot_commands: 
+  - 'docker stop -t 1000 <container> && (docker ps -q --filter "name=adguardhome" | grep -q . && echo "Error: Container did not stop in 1000 seconds." || echo "Container stopped successfully.")'
+post_snapshot_commands: 
+  - docker start adguardhome

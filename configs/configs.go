@@ -1,6 +1,8 @@
 package configs
 
 import (
+	"errors"
+	"fmt"
 	"os"
 	"path"
 	"peppeosmio/snapsync/structs"
@@ -16,11 +18,8 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 		logrus.Error("Can't create configs dir " + configsDir + ": " + err.Error())
 		return nil, snapshotsConfigs, err
 	}
-	if err != nil {
-		logrus.Error("Can't get configs dir: " + err.Error())
-		return nil, snapshotsConfigs, err
-	}
 	configPath := path.Join(configsDir, "config.yml")
+	fmt.Println(configPath)
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		logrus.Error("Can't read " + configPath + ": " + err.Error())
@@ -30,6 +29,7 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 	if expandVars {
 		configFileContent = os.ExpandEnv(configFileContent)
 	}
+	config = &structs.Config{}
 	err = yaml.Unmarshal([]byte(configFileContent), config)
 	if err != nil {
 		logrus.Error("Can't parse " + configPath + ": " + err.Error())
@@ -44,9 +44,13 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 		if strings.HasPrefix(snapshotConfigEntry.Name(), "config.yml") {
 			continue
 		}
-		snapshotConfigFile, err := os.ReadFile(snapshotConfigEntry.Name())
+		if !strings.HasSuffix(snapshotConfigEntry.Name(), ".yml") {
+			continue
+		}
+		absPath := path.Join(configsDir, snapshotConfigEntry.Name())
+		snapshotConfigFile, err := os.ReadFile(absPath)
 		if err != nil {
-			logrus.Error("Can't read snapshot config file " + snapshotConfigEntry.Name() + ": " + err.Error())
+			logrus.Error("Can't read snapshot config file " + absPath + ": " + err.Error())
 			return nil, snapshotsConfigs, err
 		}
 		configFileContent := string(snapshotConfigFile)
@@ -56,12 +60,19 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 		snapshotConfig := structs.SnapshotConfig{}
 		err = yaml.Unmarshal([]byte(configFileContent), &snapshotConfig)
 		if err != nil {
-			logrus.Error("Can't parse snapshot config file " + snapshotConfigEntry.Name() + ": " + err.Error())
+			logrus.Error("Can't parse snapshot config file " + absPath + ": " + err.Error())
 			return nil, snapshotsConfigs, err
 		}
 		snapshotsConfigs = append(snapshotsConfigs, &snapshotConfig)
 	}
 	return config, snapshotsConfigs, nil
+}
+
+func ValidateSnapshotConfig(snapshotConfig *structs.SnapshotConfig) error {
+	if strings.Contains(snapshotConfig.SnapshotName, ".") {
+		return errors.New("Snapshot " + snapshotConfig.SnapshotName + " contains a \".\"")
+	}
+	return nil
 }
 
 func GetDefaultConfigsDir() (configsDir string, err error) {
@@ -72,4 +83,17 @@ func GetDefaultConfigsDir() (configsDir string, err error) {
 	}
 	configsDir = path.Join(homeDir, ".config/snapsync")
 	return configsDir, nil
+}
+
+func GetSnapshotConfigByName(configsDir string, expandVars bool, snapshotName string) (*structs.SnapshotConfig, error) {
+	_, snapshotConfigs, err := LoadConfigs(configsDir, expandVars)
+	if err != nil {
+		return nil, err
+	}
+	for _, snapshotConfig := range snapshotConfigs {
+		if snapshotConfig.SnapshotName == snapshotName {
+			return snapshotConfig, nil
+		}
+	}
+	return nil, nil
 }

@@ -2,9 +2,12 @@ package main
 
 import (
 	"flag"
+	"fmt"
+	"os"
+	"path"
 	"peppeosmio/snapsync/configs"
+	"peppeosmio/snapsync/core"
 	"peppeosmio/snapsync/logging"
-	"peppeosmio/snapsync/snapsync"
 	"time"
 
 	"github.com/go-co-op/gocron/v2"
@@ -13,19 +16,40 @@ import (
 
 func main() {
 	logging.SetupLogging()
+	restoreFlag := flag.String("restore", "", "Restore a snapshot")
+	listFlag := flag.String("list", "", "List the snapshot by name")
 	expandVarsFlag := flag.Bool("expand-vars", true, "Expand environment variables")
+
 	defaultConfigsPath, err := configs.GetDefaultConfigsDir()
-	configsDirFlag := flag.String("configs-dir", defaultConfigsPath, "Directory of the config files")
 	if err != nil {
 		return
 	}
-	var configsDir string
-	if configsDirFlag != nil {
-		configsDir = *configsDirFlag
-	} else {
-		configsDir = defaultConfigsPath
+	configsDirFlag := flag.String("configs-dir", defaultConfigsPath, "Directory of the config files")
+
+	flag.Parse()
+
+	if len(*listFlag) > 0 {
+		snapshotsDir, err := core.GetSnapshotsPathsBySnapshotName(*configsDirFlag, *expandVarsFlag, *listFlag)
+		if err != nil {
+			logrus.Error("Can't get snapshots of snapshot " + *listFlag + ": " + err.Error())
+			return
+		}
+		for _, snapshotDir := range snapshotsDir {
+			fileInfo, err := os.Stat(snapshotDir)
+			if err != nil {
+				logrus.Error("Can't stat " + snapshotDir + ": " + err.Error())
+				return
+			}
+			fmt.Println(fileInfo.ModTime().Format(time.RFC3339) + " " + path.Base(snapshotDir))
+		}
+		return
 	}
-	config, snapshotsConfigs, err := configs.LoadConfigs(configsDir, *expandVarsFlag)
+
+	if len(*restoreFlag) > 0 {
+		return
+	}
+
+	config, snapshotsConfigs, err := configs.LoadConfigs(*configsDirFlag, *expandVarsFlag)
 	if err != nil {
 		logrus.Error("Can't get configs: " + err.Error())
 		return
@@ -38,7 +62,7 @@ func main() {
 
 	for _, snapshotConfig := range snapshotsConfigs {
 		snapshotTask := func() {
-			snapshotErr := snapsync.ExecuteSnapshot(*config, *snapshotConfig)
+			snapshotErr := core.ExecuteSnapshot(*config, *snapshotConfig)
 			if snapshotErr != nil {
 				logrus.Error("Can't execute snapshot: " + snapshotErr.Error())
 			}
