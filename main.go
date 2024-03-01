@@ -25,35 +25,41 @@ func main() {
 	} else {
 		configsDir = defaultConfigsPath
 	}
-	config, snapshotsConfigs, err := configs.LoadConfigs(configsDir)
-	// create a scheduler
+	config, snapshotsConfigs, err := configs.LoadConfigs(configsDir, *expandVarsFlag)
+	if err != nil {
+		logrus.Error("Can't get configs: " + err.Error())
+		return
+	}
 	scheduler, err := gocron.NewScheduler()
 	if err != nil {
-		// handle error
+		logrus.Error("Can't create scheduler.")
+		return
 	}
 
 	for _, snapshotConfig := range snapshotsConfigs {
+		snapshotTask := func() {
+			snapshotErr := snapsync.ExecuteSnapshot(*config, *snapshotConfig)
+			if snapshotErr != nil {
+				logrus.Error("Can't execute snapshot: " + snapshotErr.Error())
+			}
+		}
 		if len(snapshotConfig.Cron) > 0 {
-			// add a job to the scheduler
 			_, err := scheduler.NewJob(
 				gocron.CronJob(snapshotConfig.Cron, false),
 				gocron.NewTask(
-					snapsync.ExecuteSnapshot,
-					config,
-					snapshotsConfigs,
+					snapshotTask,
 				),
 			)
 			if err != nil {
 				logrus.Error("Can't add cron job for snapshot " + snapshotConfig.SnapshotName + ". Cron string is " + snapshotConfig.Cron)
 				return
 			}
+		} else {
+			snapshotTask()
 		}
 	}
-
-	// start the scheduler
 	scheduler.Start()
-
-	for true {
+	for {
 		time.Sleep(1 * time.Second)
 	}
 }
