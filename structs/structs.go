@@ -7,14 +7,15 @@ type Config struct {
 }
 
 type SnapshotConfig struct {
-	SnapshotName         string        `yaml:"snapshot_name"`
-	Dirs                 []SnapshotDir `yaml:"dirs"`
-	SnapshotsDir         string        `yaml:"snapshots_dir"`
-	Interval             string        `yaml:"interval"`
-	Retention            int           `yaml:"retention"`
-	Cron                 string        `yaml:"cron"`
-	PreSnapshotCommands  []string      `yaml:"pre_snapshot_commands"`
-	PostSnapshotCommands []string      `yaml:"post_snapshot_commands"`
+	SnapshotName                  string        `yaml:"snapshot_name"`
+	Dirs                          []SnapshotDir `yaml:"dirs"`
+	SnapshotsDir                  string        `yaml:"snapshots_dir"`
+	Interval                      string        `yaml:"interval"`
+	Retention                     int           `yaml:"retention"`
+	Cron                          string        `yaml:"cron"`
+	AlwaysRunPostSnapshotCommands bool          `yaml:"always_run_post_snapshot_commands"`
+	PreSnapshotCommands           []string      `yaml:"pre_snapshot_commands"`
+	PostSnapshotCommands          []string      `yaml:"post_snapshot_commands"`
 }
 
 type SnapshotDir struct {
