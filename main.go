@@ -18,7 +18,7 @@ import (
 func main() {
 	slog.SetDefault(slog.New(slog.NewJSONHandler(os.Stderr, nil)))
 
-	restoreFlag := flag.Bool("restore", false, "Restore a snapshot")
+	restoreFlag := flag.String("restore", "", "Restore a snapshot")
 	listFlag := flag.String("list", "", "List the snapshot by name")
 	expandVarsFlag := flag.Bool("expand-vars", true, "Expand environment variables")
 
@@ -68,20 +68,16 @@ func main() {
 		return
 	}
 
-	if *restoreFlag {
-		snapshotNameInput := ""
-		fmt.Print("Enter the name of the snapshot to restore (snapshot_name in the config file): ")
-		fmt.Scan(&snapshotNameInput)
-		snapshotsInfo, err := snapshots.GetSnapshotsInfo(*configsDirFlag, *expandVarsFlag, snapshotNameInput)
+	if len(*restoreFlag) > 0 {
+		snapshotsInfo, err := snapshots.GetSnapshotsInfo(*configsDirFlag, *expandVarsFlag, *restoreFlag)
 		if err != nil {
 			fmt.Println("Can't get snapshots of snapshot " + *listFlag + ": " + err.Error())
 			return
 		}
 		for len(snapshotsInfo) == 0 {
-			fmt.Println("There are no snapshots to restore for " + snapshotNameInput)
+			fmt.Println("There are no snapshots to restore for " + *restoreFlag)
 			return
 		}
-		fmt.Println("Choose which snapshot to restore")
 		for i, snapshotInfo := range snapshotsInfo {
 			fmt.Println(i)
 			fmt.Printf("Name: %s\n", snapshotInfo.SnapshotName)
@@ -94,10 +90,12 @@ func main() {
 				fmt.Printf("Size: %s\n", utils.HumanReadableSize(size))
 			}
 		}
+		fmt.Print("Choose which snapshot to restore: ")
 		input := 0
 		fmt.Scan(&input)
 		for input < 0 || input > len(snapshotsInfo)-1 {
 			fmt.Println("Invalid number.")
+			fmt.Print("Choose which snapshot to restore: ")
 			fmt.Scan(&input)
 		}
 		snapshotConfig, err := configs.GetSnapshotConfigByName(*configsDirFlag, *expandVarsFlag, snapshotsInfo[input].SnapshotName)
