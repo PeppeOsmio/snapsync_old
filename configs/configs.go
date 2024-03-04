@@ -2,7 +2,7 @@ package configs
 
 import (
 	"errors"
-	"log/slog"
+	"fmt"
 	"os"
 	"path"
 	"peppeosmio/snapsync/structs"
@@ -15,7 +15,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 	configPath := path.Join(configsDir, "config.yml")
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
-		slog.Error("Can't read " + configPath + ": " + err.Error())
+		fmt.Println("Can't read " + configPath + ": " + err.Error())
 		return nil, err
 	}
 	configFileContent := string(configFile)
@@ -25,7 +25,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 	config = &structs.Config{}
 	err = yaml.Unmarshal([]byte(configFileContent), config)
 	if err != nil {
-		slog.Error("Can't parse " + configPath + ": " + err.Error())
+		fmt.Println("Can't parse " + configPath + ": " + err.Error())
 		return nil, err
 	}
 	return config, nil
@@ -34,7 +34,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs []*structs.SnapshotConfig, err error) {
 	snapshotConfigsEntries, err := os.ReadDir(configsDir)
 	if err != nil {
-		slog.Error("Can't read directory " + configsDir + ": " + err.Error())
+		fmt.Println("Can't read directory " + configsDir + ": " + err.Error())
 		return snapshotsConfigs, err
 	}
 	for _, snapshotConfigEntry := range snapshotConfigsEntries {
@@ -47,7 +47,7 @@ func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs 
 		absPath := path.Join(configsDir, snapshotConfigEntry.Name())
 		snapshotConfigFile, err := os.ReadFile(absPath)
 		if err != nil {
-			slog.Error("Can't read snapshot config file " + absPath + ": " + err.Error())
+			fmt.Println("Can't read snapshot config file " + absPath + ": " + err.Error())
 			return snapshotsConfigs, err
 		}
 		configFileContent := string(snapshotConfigFile)
@@ -57,7 +57,7 @@ func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs 
 		snapshotConfig := structs.SnapshotConfig{}
 		err = yaml.Unmarshal([]byte(configFileContent), &snapshotConfig)
 		if err != nil {
-			slog.Error("Can't parse snapshot config file " + absPath + ": " + err.Error())
+			fmt.Println("Can't parse snapshot config file " + absPath + ": " + err.Error())
 			return snapshotsConfigs, err
 		}
 		for _, dir := range snapshotConfig.Dirs {
@@ -83,7 +83,7 @@ func ValidateSnapshotConfig(snapshotConfig *structs.SnapshotConfig) error {
 func GetDefaultConfigsDir() (configsDir string, err error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		slog.Error("Can't get user home dir: " + err.Error())
+		fmt.Println("Can't get user home dir: " + err.Error())
 		return "", err
 	}
 	configsDir = path.Join(homeDir, ".config/snapsync")
