@@ -1,6 +1,6 @@
 snapshot_name: test
 dirs:
-  - src_dir_abspath: /home/peppeosmio/Progetti/snapsync_old/test
+  - src_dir_abspath: /home/peppeosmio/snapsync_old/test
     dst_dir_in_snapshot: test
 snapshots_dir: ./ss/test
 interval: daily

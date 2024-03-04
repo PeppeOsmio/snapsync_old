@@ -49,7 +49,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 	}
 	tmpDir, mkdirErr := os.MkdirTemp(snapshotConfig.SnapshotsDir, "tmp")
 	// in case of errors be sure to remove the tmp directory to avoid creating junk
-	// defer os.RemoveAll(tmpDir)
+	defer os.RemoveAll(tmpDir)
 	if mkdirErr != nil {
 		slog.Error(snapshotLogPrefix + "Can't crate tmp dir " + tmpDir + ": " + mkdirErr.Error())
 		return mkdirErr
@@ -121,8 +121,10 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 			snapshotsNumbers = append(snapshotsNumbers, number)
 		}
 	}
-	slices.Reverse(snapshotsNumbers)
+	fmt.Println(snapshotsNumbers)
 	slices.Sort(snapshotsNumbers)
+	slices.Reverse(snapshotsNumbers)
+	fmt.Println(snapshotsNumbers)
 	for _, number := range snapshotsNumbers {
 		snapshotOldName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number)
 		snapshotOldPath := path.Join(snapshotConfig.SnapshotsDir, snapshotOldName)
@@ -131,7 +133,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		err = os.Rename(snapshotOldPath, snapshotRenamedPath)
 		fmt.Printf("Renaming %s to %s", snapshotOldPath, snapshotRenamedPath)
 		if err != nil {
-			slog.Error(snapshotLogPrefix + "Can't move " + snapshotOldPath + "to " + snapshotRenamedPath + ": " + err.Error())
+			slog.Error(snapshotLogPrefix + "Can't move " + snapshotOldPath + " to " + snapshotRenamedPath + ": " + err.Error())
 			return err
 		}
 	}
@@ -166,7 +168,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 
 	after := time.Now().UnixMilli()
 	seconds := float64(after-before) / 1000
-	slog.Info(snapshotLogPrefix + "Snapshots done in " + strconv.FormatFloat(seconds, 'f', -1, 64))
+	slog.Info(snapshotLogPrefix + "Snapshots done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
 	return nil
 }
 
@@ -188,7 +190,7 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 		}
 		after := time.Now().UnixMilli()
 		seconds := float64(after-before) / 1000
-		slog.Info(snapshotLogPrefix + "Pre snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64))
+		slog.Info(snapshotLogPrefix + "Pre snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
 	} else {
 		slog.Info(snapshotLogPrefix + "No pre snapshot commands to run")
 	}
@@ -213,7 +215,7 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 		}
 		after := time.Now().UnixMilli()
 		seconds := float64(after-before) / 1000
-		slog.Info(snapshotLogPrefix + "Post snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64))
+		slog.Info(snapshotLogPrefix + "Post snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
 	} else {
 		slog.Info(snapshotLogPrefix + "No post snapshot commands to run")
 	}
