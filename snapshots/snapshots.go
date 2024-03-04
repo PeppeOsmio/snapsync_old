@@ -6,36 +6,27 @@ import (
 	"os"
 	"os/exec"
 	"path"
-	"path/filepath"
 	"peppeosmio/snapsync/configs"
 	"peppeosmio/snapsync/structs"
+	"peppeosmio/snapsync/utils"
 	"regexp"
-	"sort"
+	"slices"
 	"strconv"
-	"strings"
 	"time"
 )
 
-func getRsyncCommand(config *structs.Config) string {
+func getRsyncDirsCommand(config *structs.Config, srcDir string, dstDir string, excludes []string) string {
 	rsyncExecutable := "rsync"
 	if len(config.RSyncPath) > 0 {
 		rsyncExecutable = config.RSyncPath
 	}
-	return rsyncExecutable + " -avrhLK --delete"
-}
-
-func getRsyncDirsCommand(config *structs.Config, srcDir string, dstDir string, excludes []string) string {
-	rsyncCommand := getRsyncCommand(config)
+	excludesString := ""
 	if len(excludes) > 0 {
-		rsyncCommand += " --exclude"
 		for _, exclude := range excludes {
-			rsyncCommand += exclude
+			excludesString += fmt.Sprintf("%s ", exclude)
 		}
 	}
-	// rsync is run in verbose mode using the -v flag. It outputs a detailed file list, an empty line and the summary. Now sed is used to take advantage of the fact that the summary is
-	// separated by an empty line. Everything up to the first empty line is not printed to stdout. ^$ matches an empty line and d prevents it from being output
-	rsyncCommand += " " + srcDir + "/ " + dstDir + " | sed '0,/^$/d'"
-	return rsyncCommand
+	return fmt.Sprintf("%s -avrhLK --delete --exclude \"%s\" %s/ %s", rsyncExecutable, excludesString, srcDir, dstDir)
 }
 
 func GetSnapshotDirPrefix(snapshotName string, interval string) string {
@@ -57,15 +48,18 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		return err
 	}
 	tmpDir, mkdirErr := os.MkdirTemp(snapshotConfig.SnapshotsDir, "tmp")
-	//defer os.RemoveAll(tmpDir)
+	// in case of errors be sure to remove the tmp directory to avoid creating junk
+	// defer os.RemoveAll(tmpDir)
 	if mkdirErr != nil {
 		slog.Error(snapshotLogPrefix + "Can't crate tmp dir " + tmpDir + ": " + mkdirErr.Error())
 		return mkdirErr
 	}
 	_, err = os.Stat(newestSnapshotPath)
+	// if the snapshot 0 already exists, copy it with hard links into the tmp dir
 	if err == nil {
 		slog.Debug(snapshotLogPrefix + "Copying latest snapshot...")
-		_, cpErr := exec.Command("sh", "-c", config.CpPath, "-lra", newestSnapshotPath+"/./", tmpDir).Output()
+		cpCommand := fmt.Sprintf("%s -lra %s/./ %s", config.CpPath, newestSnapshotPath, tmpDir)
+		_, cpErr := exec.Command("sh", "-c", cpCommand).Output()
 		if cpErr != nil {
 			slog.Error(snapshotLogPrefix + "Error copying last snapshot " + newestSnapshotPath + " to " + tmpDir + ": " + cpErr.Error())
 			return cpErr
@@ -80,16 +74,12 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 	os.Chtimes(tmpDir, now, now)
 
 	for _, dirToSnapshot := range snapshotConfig.Dirs {
-		if !path.IsAbs(dirToSnapshot.SrcDir) {
-			tmp, _ := filepath.Abs(dirToSnapshot.SrcDir)
-			dirToSnapshot.SrcDir = tmp
-		}
-		_, err = os.Stat(dirToSnapshot.SrcDir)
+		_, err = os.Stat(dirToSnapshot.SrcDirAbspath)
 		if os.IsNotExist(err) {
-			slog.Warn(snapshotLogPrefix + "Source directory " + dirToSnapshot.SrcDir + " does not exist.")
+			slog.Warn(snapshotLogPrefix + "Source directory " + dirToSnapshot.SrcDirAbspath + " does not exist.")
 			continue
 		}
-		dstDirFull := path.Join(tmpDir, dirToSnapshot.SrcDir)
+		dstDirFull := path.Join(tmpDir, dirToSnapshot.DstDirInSnapshot)
 		_, err = os.Stat(dstDirFull)
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(dstDirFull, 0700)
@@ -98,18 +88,12 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 				return err
 			}
 		}
-		rsyncCommand := getRsyncDirsCommand(config, dirToSnapshot.SrcDir, dstDirFull, dirToSnapshot.Excludes)
-		// rsync is run in verbose mode using the -v flag. It outputs a detailed file list, an empty line and the summary. Now sed is used to take advantage of the fact that the summary is
-		// separated by an empty line. Everything up to the first empty line is not printed to stdout. ^$ matches an empty line and d prevents it from being output
-		slog.Debug(snapshotLogPrefix + "Synching dir " + dirToSnapshot.SrcDir + "/ to " + dstDirFull)
-
-		_, err = os.Stat(dstDirFull)
-		if !os.IsNotExist(err) {
-			fmt.Println(dstDirFull + " exists! Running " + rsyncCommand)
-		}
-		_, err := exec.Command("sh", "-c", rsyncCommand).Output()
+		rsyncCommand := getRsyncDirsCommand(config, dirToSnapshot.SrcDirAbspath, dstDirFull, dirToSnapshot.Excludes)
+		slog.Debug(snapshotLogPrefix + "Synching dir " + dirToSnapshot.SrcDirAbspath + "/ to " + dstDirFull)
+		slog.Info(fmt.Sprintf("Running %s", rsyncCommand))
+		result, err := exec.Command("sh", "-c", rsyncCommand).Output()
 		if err != nil {
-			slog.Error(snapshotLogPrefix + "Can't sync " + dirToSnapshot.SrcDir + "/ to " + dstDirFull + ": " + err.Error())
+			slog.Error(snapshotLogPrefix + "Can't sync " + dirToSnapshot.SrcDirAbspath + "/ to " + dstDirFull + ": " + err.Error() + ", " + string(result))
 			return err
 		}
 	}
@@ -121,7 +105,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		slog.Error(snapshotLogPrefix + "Can't read directory " + snapshotConfig.SnapshotsDir + ": " + err.Error())
 		return err
 	}
-	snapshotPrefixWithNumberRegex, err := regexp.Compile("^" + regexp.QuoteMeta(GetSnapshotDirPrefix(snapshotConfig.SnapshotName, snapshotConfig.Interval)) + `\.([0-9]+)$`)
+	snapshotPrefixWithNumberRegex, err := regexp.Compile("^" + regexp.QuoteMeta(GetSnapshotDirPrefix(snapshotConfig.SnapshotName, snapshotConfig.Interval)) + `([0-9]+)$`)
 	if err != nil {
 		slog.Error(snapshotLogPrefix + "Error compiling regex: " + err.Error())
 		return err
@@ -137,13 +121,15 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 			snapshotsNumbers = append(snapshotsNumbers, number)
 		}
 	}
-	sort.Ints(snapshotsNumbers)
+	slices.Reverse(snapshotsNumbers)
+	slices.Sort(snapshotsNumbers)
 	for _, number := range snapshotsNumbers {
 		snapshotOldName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number)
 		snapshotOldPath := path.Join(snapshotConfig.SnapshotsDir, snapshotOldName)
 		snapshotRenamedName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number+1)
 		snapshotRenamedPath := path.Join(snapshotConfig.SnapshotsDir, snapshotRenamedName)
 		err = os.Rename(snapshotOldPath, snapshotRenamedPath)
+		fmt.Printf("Renaming %s to %s", snapshotOldPath, snapshotRenamedPath)
 		if err != nil {
 			slog.Error(snapshotLogPrefix + "Can't move " + snapshotOldPath + "to " + snapshotRenamedPath + ": " + err.Error())
 			return err
@@ -162,22 +148,18 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		slog.Error(snapshotLogPrefix + "Can't read directory " + snapshotConfig.SnapshotsDir + ": " + err.Error())
 		return err
 	}
-	for _, snapshot := range snapshots {
-		match := snapshotPrefixWithNumberRegex.FindStringSubmatch(snapshot.Name())
-		if match != nil {
-			number, err := strconv.Atoi(match[1]) // match[1] contains the first capturing group
+	for _, snapshotEntry := range snapshots {
+		snapshotInfo, err := utils.GetInfoFromSnapshotPath(snapshotEntry.Name())
+		if err != nil {
+			return err
+		}
+		if snapshotInfo.Number >= snapshotConfig.Retention {
+			snapshotToRemoveName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, snapshotInfo.Number)
+			snapshotToRemovePath := path.Join(snapshotConfig.SnapshotsDir, snapshotToRemoveName)
+			slog.Info(snapshotLogPrefix + "Removing snapshot " + snapshotToRemovePath)
+			err = os.RemoveAll(snapshotToRemovePath)
 			if err != nil {
-				slog.Error(snapshotLogPrefix + "Error converting string to int: " + err.Error())
-				return err
-			}
-			if number >= snapshotConfig.Retention {
-				snapshotToRemoveName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number)
-				snapshotToRemovePath := path.Join(snapshotConfig.SnapshotsDir, snapshotToRemoveName)
-				slog.Info(snapshotLogPrefix + "Removing snapshot " + snapshotToRemovePath)
-				err = os.RemoveAll(snapshotToRemovePath)
-				if err != nil {
-					slog.Error("Can't remove snapshot " + snapshotToRemovePath + ": " + err.Error())
-				}
+				slog.Error("Can't remove snapshot " + snapshotToRemovePath + ": " + err.Error())
 			}
 		}
 	}
@@ -241,56 +223,57 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 	return nil
 }
 
-func GetSnapshotsPathsBySnapshotName(configsDir string, expandVars bool, snapshotName string) (snapshotsDirs []string, err error) {
+func GetSnapshotsInfo(configsDir string, expandVars bool, snapshotName string) (snapshotsInfo []*structs.SnapshotInfo, err error) {
 	snapshotConfig, err := configs.GetSnapshotConfigByName(configsDir, expandVars, snapshotName)
 	if err != nil {
 		slog.Error("Can't list snapshots of " + snapshotName + ": " + err.Error())
-		return snapshotsDirs, err
+		return snapshotsInfo, err
 	}
 	if snapshotConfig == nil {
 		slog.Warn("Snapshot template " + snapshotName + " does not exist.")
-		return snapshotsDirs, nil
+		return snapshotsInfo, nil
 	}
 	_, err = os.Stat(snapshotConfig.SnapshotsDir)
 	if os.IsNotExist(err) {
 		slog.Info("No snapshots found for " + snapshotName)
-		return snapshotsDirs, nil
+		return snapshotsInfo, nil
 	}
 	snapshotsDirsEntries, err := os.ReadDir(snapshotConfig.SnapshotsDir)
 	if err != nil {
 		slog.Error("Can't list snapshot of " + snapshotName + ": " + err.Error())
-		return snapshotsDirs, err
+		return snapshotsInfo, err
 	}
 	for _, entry := range snapshotsDirsEntries {
-		snapshotsDirs = append(snapshotsDirs, path.Join(snapshotConfig.SnapshotsDir, entry.Name()))
+		snapshotFullPath := path.Join(snapshotConfig.SnapshotsDir, entry.Name())
+		_, err := os.Stat(snapshotFullPath)
+		if err != nil {
+			slog.Error("Can't stat " + snapshotFullPath + ": " + err.Error())
+			return snapshotsInfo, err
+		}
+		snapshotInfo, err := utils.GetInfoFromSnapshotPath(entry.Name())
+		if err != nil {
+			return snapshotsInfo, fmt.Errorf("can't parse snapshot name: %s", err.Error())
+		}
+		snapshotsInfo = append(snapshotsInfo, snapshotInfo)
 	}
-	return snapshotsDirs, nil
+	return snapshotsInfo, nil
 }
 
-func RestoreSnapshot(config structs.Config, snapshotConfig structs.SnapshotConfig, interval string, number int) error {
-	snapshotPath := path.Join(snapshotConfig.SnapshotsDir, GetSnapshotDirName(snapshotConfig.SnapshotName, interval, number))
-	snapshotLogPrefix := "[" + snapshotConfig.SnapshotName + "] "
-	snapshotContents, err := os.ReadDir(snapshotPath)
-	if err != nil {
-		slog.Error("Can't read snapshot " + snapshotPath + ": " + err.Error())
-		return err
-	}
-	for _, snapshotDirEntry := range snapshotContents {
-		dirToRestoreTo := strings.TrimPrefix(snapshotDirEntry.Name(), snapshotConfig.SnapshotsDir)
-		err = os.MkdirAll(dirToRestoreTo, 0700)
+func RestoreSnapshot(config *structs.Config, snapshotInfo *structs.SnapshotInfo, snapshotConfig *structs.SnapshotConfig) (err error) {
+	snapshotLogPrefix := "[" + snapshotInfo.SnapshotName + "] "
+	for _, dir := range snapshotConfig.Dirs {
+		err = os.MkdirAll(dir.SrcDirAbspath, 0700)
 		if err != nil {
-			slog.Error("Can't create directory " + dirToRestoreTo + ": " + err.Error())
+			slog.Error("Can't create directory " + dir.SrcDirAbspath + ": " + err.Error())
 			return err
 		}
-		rsyncCommand := getRsyncDirsCommand(&config, snapshotDirEntry.Name(), dirToRestoreTo, []string{})
-		// rsync is run in verbose mode using the -v flag. It outputs a detailed file list, an empty line and the summary. Now sed is used to take advantage of the fact that the summary is
-		// separated by an empty line. Everything up to the first empty line is not printed to stdout. ^$ matches an empty line and d prevents it from being output
-		slog.Debug(snapshotLogPrefix + "Synching dir " + snapshotDirEntry.Name() + "/ to" + dirToRestoreTo)
-		_, err := exec.Command("sh", "-c", rsyncCommand).Output()
+		snapshottedDirPath := path.Join(snapshotConfig.SnapshotsDir, dir.DstDirInSnapshot)
+		rsyncCommand := getRsyncDirsCommand(config, snapshottedDirPath, dir.SrcDirAbspath, nil)
+		slog.Debug(snapshotLogPrefix + "Synching dir " + snapshottedDirPath + "/ to" + dir.SrcDirAbspath)
+		_, err = exec.Command("sh", "-c", rsyncCommand).Output()
 		if err != nil {
-			slog.Error(snapshotLogPrefix + "Can't sync " + snapshotDirEntry.Name() + "/ to" + dirToRestoreTo + ": " + err.Error())
-			return err
+			slog.Error(snapshotLogPrefix + "Can't sync " + snapshottedDirPath + "/ to" + dir.SrcDirAbspath + ": " + err.Error())
 		}
 	}
-	return nil
+	return err
 }

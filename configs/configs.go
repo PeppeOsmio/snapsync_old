@@ -11,17 +11,12 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, snapshotsConfigs []*structs.SnapshotConfig, err error) {
-	err = os.MkdirAll(configsDir, 0700)
-	if err != nil {
-		slog.Error("Can't create configs dir " + configsDir + ": " + err.Error())
-		return nil, snapshotsConfigs, err
-	}
+func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err error) {
 	configPath := path.Join(configsDir, "config.yml")
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
 		slog.Error("Can't read " + configPath + ": " + err.Error())
-		return nil, snapshotsConfigs, err
+		return nil, err
 	}
 	configFileContent := string(configFile)
 	if expandVars {
@@ -31,12 +26,16 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 	err = yaml.Unmarshal([]byte(configFileContent), config)
 	if err != nil {
 		slog.Error("Can't parse " + configPath + ": " + err.Error())
-		return nil, snapshotsConfigs, err
+		return nil, err
 	}
+	return config, nil
+}
+
+func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs []*structs.SnapshotConfig, err error) {
 	snapshotConfigsEntries, err := os.ReadDir(configsDir)
 	if err != nil {
 		slog.Error("Can't read directory " + configsDir + ": " + err.Error())
-		return nil, snapshotsConfigs, err
+		return snapshotsConfigs, err
 	}
 	for _, snapshotConfigEntry := range snapshotConfigsEntries {
 		if strings.HasPrefix(snapshotConfigEntry.Name(), "config.yml") {
@@ -49,7 +48,7 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 		snapshotConfigFile, err := os.ReadFile(absPath)
 		if err != nil {
 			slog.Error("Can't read snapshot config file " + absPath + ": " + err.Error())
-			return nil, snapshotsConfigs, err
+			return snapshotsConfigs, err
 		}
 		configFileContent := string(snapshotConfigFile)
 		if expandVars {
@@ -59,11 +58,16 @@ func LoadConfigs(configsDir string, expandVars bool) (config *structs.Config, sn
 		err = yaml.Unmarshal([]byte(configFileContent), &snapshotConfig)
 		if err != nil {
 			slog.Error("Can't parse snapshot config file " + absPath + ": " + err.Error())
-			return nil, snapshotsConfigs, err
+			return snapshotsConfigs, err
+		}
+		for _, dir := range snapshotConfig.Dirs {
+			if !path.IsAbs(dir.SrcDirAbspath) {
+				return nil, errors.New(snapshotConfig.SnapshotName + ": src_dir_abspath must be an absolute path")
+			}
 		}
 		snapshotsConfigs = append(snapshotsConfigs, &snapshotConfig)
 	}
-	return config, snapshotsConfigs, nil
+	return snapshotsConfigs, nil
 }
 
 func ValidateSnapshotConfig(snapshotConfig *structs.SnapshotConfig) error {
@@ -87,7 +91,7 @@ func GetDefaultConfigsDir() (configsDir string, err error) {
 }
 
 func GetSnapshotConfigByName(configsDir string, expandVars bool, snapshotName string) (*structs.SnapshotConfig, error) {
-	_, snapshotConfigs, err := LoadConfigs(configsDir, expandVars)
+	snapshotConfigs, err := LoadSnapshotsConfigs(configsDir, expandVars)
 	if err != nil {
 		return nil, err
 	}
