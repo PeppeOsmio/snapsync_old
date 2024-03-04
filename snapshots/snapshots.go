@@ -121,10 +121,8 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 			snapshotsNumbers = append(snapshotsNumbers, number)
 		}
 	}
-	fmt.Println(snapshotsNumbers)
 	slices.Sort(snapshotsNumbers)
 	slices.Reverse(snapshotsNumbers)
-	fmt.Println(snapshotsNumbers)
 	for _, number := range snapshotsNumbers {
 		snapshotOldName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number)
 		snapshotOldPath := path.Join(snapshotConfig.SnapshotsDir, snapshotOldName)
@@ -252,7 +250,7 @@ func GetSnapshotsInfo(configsDir string, expandVars bool, snapshotName string) (
 			fmt.Println("Can't stat " + snapshotFullPath + ": " + err.Error())
 			return snapshotsInfo, err
 		}
-		snapshotInfo, err := utils.GetInfoFromSnapshotPath(entry.Name())
+		snapshotInfo, err := utils.GetInfoFromSnapshotPath(path.Join(snapshotConfig.SnapshotsDir, entry.Name()))
 		if err != nil {
 			return snapshotsInfo, fmt.Errorf("can't parse snapshot name: %s", err.Error())
 		}

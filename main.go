@@ -69,9 +69,16 @@ func main() {
 	}
 
 	if *restoreFlag {
-		snapshotsInfo, err := snapshots.GetSnapshotsInfo(*configsDirFlag, *expandVarsFlag, *listFlag)
+		snapshotNameInput := ""
+		fmt.Print("Enter the name of the snapshot to restore (snapshot_name in the config file): ")
+		fmt.Scan(&snapshotNameInput)
+		snapshotsInfo, err := snapshots.GetSnapshotsInfo(*configsDirFlag, *expandVarsFlag, snapshotNameInput)
 		if err != nil {
 			fmt.Println("Can't get snapshots of snapshot " + *listFlag + ": " + err.Error())
+			return
+		}
+		for len(snapshotsInfo) == 0 {
+			fmt.Println("There are no snapshots to restore for " + snapshotNameInput)
 			return
 		}
 		fmt.Println("Choose which snapshot to restore")
@@ -101,6 +108,7 @@ func main() {
 		err = snapshots.RestoreSnapshot(config, snapshotsInfo[input], snapshotConfig)
 		if err != nil {
 			fmt.Println("An error occurred while restoring the snapshot: " + err.Error())
+			return
 		}
 		return
 	}
