@@ -267,12 +267,12 @@ func RestoreSnapshot(config *structs.Config, snapshotInfo *structs.SnapshotInfo,
 			fmt.Println("Can't create directory " + dir.SrcDirAbspath + ": " + err.Error())
 			return err
 		}
-		snapshottedDirPath := path.Join(snapshotConfig.SnapshotsDir, dir.DstDirInSnapshot)
+		snapshottedDirPath := path.Join(snapshotInfo.Abspath, dir.DstDirInSnapshot)
 		rsyncCommand := getRsyncDirsCommand(config, snapshottedDirPath, dir.SrcDirAbspath, nil)
-		slog.Debug(snapshotLogPrefix + "Synching dir " + snapshottedDirPath + "/ to" + dir.SrcDirAbspath)
+		fmt.Printf("%sSynching %s to %s\n", snapshotLogPrefix, snapshottedDirPath, dir.SrcDirAbspath)
 		_, err = exec.Command("sh", "-c", rsyncCommand).Output()
 		if err != nil {
-			fmt.Println(snapshotLogPrefix + "Can't sync " + snapshottedDirPath + "/ to" + dir.SrcDirAbspath + ": " + err.Error())
+			fmt.Println(snapshotLogPrefix + "Can't sync " + snapshottedDirPath + "/ to " + dir.SrcDirAbspath + ": " + err.Error())
 		}
 	}
 	return err

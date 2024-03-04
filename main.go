@@ -78,23 +78,28 @@ func main() {
 			fmt.Println("There are no snapshots to restore for " + *restoreFlag)
 			return
 		}
-		for i, snapshotInfo := range snapshotsInfo {
-			fmt.Println(i)
-			fmt.Printf("Name: %s\n", snapshotInfo.SnapshotName)
-			fmt.Printf("Interval: %s\n", snapshotInfo.Interval)
-			fmt.Printf("Number: %d\n", snapshotInfo.Number)
-			size, err := snapshotInfo.Size()
-			if err != nil {
-				fmt.Printf("Size: (error: %s)\n", err.Error())
-			} else {
-				fmt.Printf("Size: %s\n", utils.HumanReadableSize(size))
+		printSnapshots := func() {
+			for i, snapshotInfo := range snapshotsInfo {
+				fmt.Printf("\n[%d]\n", i)
+				fmt.Printf("Name: %s\n", snapshotInfo.SnapshotName)
+				fmt.Printf("Interval: %s\n", snapshotInfo.Interval)
+				fmt.Printf("Number: %d\n", snapshotInfo.Number)
+				size, err := snapshotInfo.Size()
+				if err != nil {
+					fmt.Printf("Size: (error: %s)\n", err.Error())
+				} else {
+					fmt.Printf("Size: %s\n", utils.HumanReadableSize(size))
+				}
 			}
 		}
+		printSnapshots()
+		fmt.Println()
 		fmt.Print("Choose which snapshot to restore: ")
 		input := 0
 		fmt.Scan(&input)
 		for input < 0 || input > len(snapshotsInfo)-1 {
 			fmt.Println("Invalid number.")
+			printSnapshots()
 			fmt.Print("Choose which snapshot to restore: ")
 			fmt.Scan(&input)
 		}
