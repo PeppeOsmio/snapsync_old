@@ -121,7 +121,7 @@ func main() {
 	snapshotTask := func(snapshotConfig *structs.SnapshotConfig) {
 		snapshotErr := snapshots.ExecuteSnapshot(config, snapshotConfig)
 		if snapshotErr != nil {
-			slog.Error("Can't execute snapshot: " + snapshotErr.Error())
+			slog.Error(fmt.Sprintf("[%s] can't execute snapshot: %s", snapshotConfig.SnapshotName, err.Error()))
 		}
 	}
 	snapshotsConfigsToSchedule := []*structs.SnapshotConfig{}
@@ -148,9 +148,10 @@ func main() {
 				slog.Error("Can't add cron job for snapshot " + snapshotConfig.SnapshotName + ". Cron string is " + snapshotConfig.Cron)
 				return
 			}
+			slog.Info(fmt.Sprintf("[%s] scheduled with cron %s", snapshotConfig.SnapshotName, snapshotConfig.Cron))
 		}
 		if err != nil {
-			slog.Error("Can't create scheduler.")
+			slog.Error("can't create scheduler.")
 			return
 		}
 		scheduler.Start()

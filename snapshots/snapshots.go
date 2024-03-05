@@ -149,7 +149,6 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		if snapshotInfo.Number >= snapshotConfig.Retention {
 			snapshotToRemoveName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, snapshotInfo.Number)
 			snapshotToRemovePath := path.Join(snapshotConfig.SnapshotsDir, snapshotToRemoveName)
-			slog.Info(snapshotLogPrefix + "Removing snapshot " + snapshotToRemovePath)
 			err = os.RemoveAll(snapshotToRemovePath)
 			if err != nil {
 				fmt.Println("Can't remove snapshot " + snapshotToRemovePath + ": " + err.Error())
@@ -164,7 +163,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 }
 
 func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotConfig) error {
-	snapshotLogPrefix := "[" + snapshotConfig.SnapshotName + "] "
+	snapshotLogPrefix := fmt.Sprintf("[%s]", snapshotConfig.SnapshotName)
 	before := time.Now().UnixMilli()
 	if len(snapshotConfig.PreSnapshotCommands) > 0 {
 		slog.Info(fmt.Sprintf("%s executing pre snapshot commands", snapshotLogPrefix))
@@ -252,7 +251,7 @@ func GetSnapshotsInfo(configsDir string, expandVars bool, snapshotName string) (
 }
 
 func RestoreSnapshot(config *structs.Config, snapshotInfo *structs.SnapshotInfo, snapshotConfig *structs.SnapshotConfig) (err error) {
-	snapshotLogPrefix := "[" + snapshotInfo.SnapshotName + "] "
+	snapshotLogPrefix := fmt.Sprintf("[%s]", snapshotConfig.SnapshotName)
 	for _, dir := range snapshotConfig.Dirs {
 		err = os.MkdirAll(dir.SrcDirAbspath, 0700)
 		if err != nil {
