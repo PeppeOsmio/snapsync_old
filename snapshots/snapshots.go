@@ -38,21 +38,19 @@ func GetSnapshotDirName(snapshotName string, interval string, number int) string
 }
 
 func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.SnapshotConfig) error {
-	snapshotLogPrefix := "[" + snapshotConfig.SnapshotName + "] "
+	snapshotLogPrefix := fmt.Sprintf("[%s]", snapshotConfig.SnapshotName)
 	before := time.Now().UnixMilli()
 	newestSnapshotPath := path.Join(snapshotConfig.SnapshotsDir, GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, 0))
 	slog.Debug(snapshotLogPrefix + "Checking if " + newestSnapshotPath + " exists")
 	err := os.MkdirAll(snapshotConfig.SnapshotsDir, 0700)
 	if err != nil {
-		fmt.Println(snapshotLogPrefix + "Can't create snapshot dir " + snapshotConfig.SnapshotsDir + ": " + err.Error())
-		return err
+		return fmt.Errorf("%s can't create snapshot dir %s: %s", snapshotLogPrefix, snapshotConfig.SnapshotsDir, err.Error())
 	}
 	tmpDir, mkdirErr := os.MkdirTemp(snapshotConfig.SnapshotsDir, "tmp")
 	// in case of errors be sure to remove the tmp directory to avoid creating junk
 	defer os.RemoveAll(tmpDir)
 	if mkdirErr != nil {
-		fmt.Println(snapshotLogPrefix + "Can't crate tmp dir " + tmpDir + ": " + mkdirErr.Error())
-		return mkdirErr
+		return fmt.Errorf("%s can't create tmp dir %s: %s", snapshotLogPrefix, tmpDir, mkdirErr.Error())
 	}
 	_, err = os.Stat(newestSnapshotPath)
 	// if the snapshot 0 already exists, copy it with hard links into the tmp dir
@@ -61,14 +59,12 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		cpCommand := fmt.Sprintf("%s -lra %s/./ %s", config.CpPath, newestSnapshotPath, tmpDir)
 		_, cpErr := exec.Command("sh", "-c", cpCommand).Output()
 		if cpErr != nil {
-			fmt.Println(snapshotLogPrefix + "Error copying last snapshot " + newestSnapshotPath + " to " + tmpDir + ": " + cpErr.Error())
-			return cpErr
+			return fmt.Errorf("%s error copying last snapshot %s to %s: %s", snapshotLogPrefix, newestSnapshotPath, tmpDir, cpErr.Error())
 		}
 	} else if os.IsNotExist(err) {
 		slog.Debug(snapshotLogPrefix + "Creating first snapshot " + newestSnapshotPath)
 	} else {
-		fmt.Println(snapshotLogPrefix + err.Error())
-		return err
+		return fmt.Errorf("%s can't stat %s: %s", newestSnapshotPath, snapshotLogPrefix, err.Error())
 	}
 	now := time.Now()
 	os.Chtimes(tmpDir, now, now)
@@ -84,17 +80,15 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		if os.IsNotExist(err) {
 			err = os.MkdirAll(dstDirFull, 0700)
 			if err != nil {
-				fmt.Println(snapshotLogPrefix + "Can't create destination dir " + dstDirFull)
-				return err
+				return fmt.Errorf("%s can't create destination dir %s", snapshotLogPrefix, dstDirFull)
 			}
 		}
 		rsyncCommand := getRsyncDirsCommand(config, dirToSnapshot.SrcDirAbspath, dstDirFull, dirToSnapshot.Excludes)
 		slog.Debug(snapshotLogPrefix + "Synching dir " + dirToSnapshot.SrcDirAbspath + "/ to " + dstDirFull)
-		slog.Info(fmt.Sprintf("Running %s", rsyncCommand))
-		result, err := exec.Command("sh", "-c", rsyncCommand).Output()
+		slog.Debug(fmt.Sprintf("Running %s", rsyncCommand))
+		_, err := exec.Command("sh", "-c", rsyncCommand).Output()
 		if err != nil {
-			fmt.Println(snapshotLogPrefix + "Can't sync " + dirToSnapshot.SrcDirAbspath + "/ to " + dstDirFull + ": " + err.Error() + ", " + string(result))
-			return err
+			return fmt.Errorf("%s can't sync %s/ to %s: %s", snapshotLogPrefix, dirToSnapshot.SrcDirAbspath, dstDirFull, err.Error())
 		}
 	}
 
@@ -129,7 +123,6 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 		snapshotRenamedName := GetSnapshotDirName(snapshotConfig.SnapshotName, snapshotConfig.Interval, number+1)
 		snapshotRenamedPath := path.Join(snapshotConfig.SnapshotsDir, snapshotRenamedName)
 		err = os.Rename(snapshotOldPath, snapshotRenamedPath)
-		fmt.Printf("Renaming %s to %s", snapshotOldPath, snapshotRenamedPath)
 		if err != nil {
 			fmt.Println(snapshotLogPrefix + "Can't move " + snapshotOldPath + " to " + snapshotRenamedPath + ": " + err.Error())
 			return err
@@ -166,7 +159,7 @@ func executeOnlySnapshot(config *structs.Config, snapshotConfig *structs.Snapsho
 
 	after := time.Now().UnixMilli()
 	seconds := float64(after-before) / 1000
-	slog.Info(snapshotLogPrefix + "Snapshots done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
+	slog.Info(fmt.Sprintf("%s snapshots done in %.2f s", snapshotLogPrefix, seconds))
 	return nil
 }
 
@@ -174,7 +167,7 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 	snapshotLogPrefix := "[" + snapshotConfig.SnapshotName + "] "
 	before := time.Now().UnixMilli()
 	if len(snapshotConfig.PreSnapshotCommands) > 0 {
-		slog.Info(snapshotLogPrefix + "Executing pre snapshot commands")
+		slog.Info(fmt.Sprintf("%s executing pre snapshot commands", snapshotLogPrefix))
 		for _, command := range snapshotConfig.PreSnapshotCommands {
 			slog.Info(snapshotLogPrefix + " " + command)
 			result, err := exec.Command("sh", "-c", command).Output()
@@ -188,9 +181,9 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 		}
 		after := time.Now().UnixMilli()
 		seconds := float64(after-before) / 1000
-		slog.Info(snapshotLogPrefix + "Pre snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
+		slog.Info(fmt.Sprintf("%s pre snapshot commands done in %.2f s", snapshotLogPrefix, seconds))
 	} else {
-		slog.Info(snapshotLogPrefix + "No pre snapshot commands to run")
+		slog.Info(fmt.Sprintf("%s no pre snapshot commands to run", snapshotLogPrefix))
 	}
 
 	err := executeOnlySnapshot(config, snapshotConfig)
@@ -199,13 +192,12 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 	}
 
 	if len(snapshotConfig.PostSnapshotCommands) > 0 {
-		slog.Info(snapshotLogPrefix + "Executing post snapshot commands")
+		slog.Info(fmt.Sprintf("%s executing post snapshot commands", snapshotLogPrefix))
 		for _, command := range snapshotConfig.PostSnapshotCommands {
-			slog.Info(snapshotLogPrefix + " " + command)
+			slog.Info(fmt.Sprintf("%s %s", snapshotLogPrefix, command))
 			result, err := exec.Command("sh", "-c", command).Output()
 			if err != nil {
-				fmt.Println(snapshotLogPrefix + command + ": " + err.Error())
-				return err
+				return fmt.Errorf("%s %s: %s", snapshotLogPrefix, command, err.Error())
 			}
 			if len(result) > 0 {
 				slog.Info(snapshotLogPrefix + command + ": " + string(result))
@@ -213,9 +205,9 @@ func ExecuteSnapshot(config *structs.Config, snapshotConfig *structs.SnapshotCon
 		}
 		after := time.Now().UnixMilli()
 		seconds := float64(after-before) / 1000
-		slog.Info(snapshotLogPrefix + "Post snapshots commands done in " + strconv.FormatFloat(seconds, 'f', -1, 64) + " s")
+		slog.Info(fmt.Sprintf("%s post snapshot commands done in %.2f s", snapshotLogPrefix, seconds))
 	} else {
-		slog.Info(snapshotLogPrefix + "No post snapshot commands to run")
+		slog.Info(fmt.Sprintf("%s no pre snapshot commands to run", snapshotLogPrefix))
 	}
 
 	now := time.Now()
@@ -269,7 +261,7 @@ func RestoreSnapshot(config *structs.Config, snapshotInfo *structs.SnapshotInfo,
 		}
 		snapshottedDirPath := path.Join(snapshotInfo.Abspath, dir.DstDirInSnapshot)
 		rsyncCommand := getRsyncDirsCommand(config, snapshottedDirPath, dir.SrcDirAbspath, nil)
-		fmt.Printf("%sSynching %s to %s\n", snapshotLogPrefix, snapshottedDirPath, dir.SrcDirAbspath)
+		slog.Debug(rsyncCommand)
 		_, err = exec.Command("sh", "-c", rsyncCommand).Output()
 		if err != nil {
 			fmt.Println(snapshotLogPrefix + "Can't sync " + snapshottedDirPath + "/ to " + dir.SrcDirAbspath + ": " + err.Error())

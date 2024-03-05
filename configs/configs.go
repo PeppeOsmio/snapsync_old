@@ -1,7 +1,6 @@
 package configs
 
 import (
-	"errors"
 	"fmt"
 	"os"
 	"path"
@@ -15,8 +14,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 	configPath := path.Join(configsDir, "config.yml")
 	configFile, err := os.ReadFile(configPath)
 	if err != nil {
-		fmt.Println("Can't read " + configPath + ": " + err.Error())
-		return nil, err
+		return nil, fmt.Errorf("can't read %s: %s", configPath, err.Error())
 	}
 	configFileContent := string(configFile)
 	if expandVars {
@@ -25,8 +23,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 	config = &structs.Config{}
 	err = yaml.Unmarshal([]byte(configFileContent), config)
 	if err != nil {
-		fmt.Println("Can't parse " + configPath + ": " + err.Error())
-		return nil, err
+		return nil, fmt.Errorf("can't parse %s: %s", configPath, err.Error())
 	}
 	return config, nil
 }
@@ -34,8 +31,7 @@ func LoadConfig(configsDir string, expandVars bool) (config *structs.Config, err
 func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs []*structs.SnapshotConfig, err error) {
 	snapshotConfigsEntries, err := os.ReadDir(configsDir)
 	if err != nil {
-		fmt.Println("Can't read directory " + configsDir + ": " + err.Error())
-		return snapshotsConfigs, err
+		return snapshotsConfigs, fmt.Errorf("can't read directory %s: %s", configsDir, err.Error())
 	}
 	for _, snapshotConfigEntry := range snapshotConfigsEntries {
 		if strings.HasPrefix(snapshotConfigEntry.Name(), "config.yml") {
@@ -47,8 +43,7 @@ func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs 
 		absPath := path.Join(configsDir, snapshotConfigEntry.Name())
 		snapshotConfigFile, err := os.ReadFile(absPath)
 		if err != nil {
-			fmt.Println("Can't read snapshot config file " + absPath + ": " + err.Error())
-			return snapshotsConfigs, err
+			return snapshotsConfigs, fmt.Errorf("can't read snapshot config file %s: %s", absPath, err.Error())
 		}
 		configFileContent := string(snapshotConfigFile)
 		if expandVars {
@@ -57,12 +52,11 @@ func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs 
 		snapshotConfig := structs.SnapshotConfig{}
 		err = yaml.Unmarshal([]byte(configFileContent), &snapshotConfig)
 		if err != nil {
-			fmt.Println("Can't parse snapshot config file " + absPath + ": " + err.Error())
-			return snapshotsConfigs, err
+			return snapshotsConfigs, fmt.Errorf("can't parse snapshot config file %s: %s", absPath, err.Error())
 		}
 		for _, dir := range snapshotConfig.Dirs {
 			if !path.IsAbs(dir.SrcDirAbspath) {
-				return nil, errors.New(snapshotConfig.SnapshotName + ": src_dir_abspath must be an absolute path")
+				return nil, fmt.Errorf("%s: src_dir_abspath must be an absolute path", snapshotConfig.SnapshotName)
 			}
 		}
 		snapshotsConfigs = append(snapshotsConfigs, &snapshotConfig)
@@ -72,10 +66,10 @@ func LoadSnapshotsConfigs(configsDir string, expandVars bool) (snapshotsConfigs 
 
 func ValidateSnapshotConfig(snapshotConfig *structs.SnapshotConfig) error {
 	if strings.Contains(snapshotConfig.SnapshotName, ".") || strings.Contains(snapshotConfig.SnapshotName, " ") {
-		return errors.New("Snapshot " + snapshotConfig.SnapshotName + " contains a dot or a space")
+		return fmt.Errorf("snapshot %s'sname must not include dots or whitespaces", snapshotConfig.SnapshotName)
 	}
 	if strings.Contains(snapshotConfig.Interval, ".") || strings.Contains(snapshotConfig.Interval, " ") {
-		return errors.New("Snapshot " + snapshotConfig.SnapshotName + " contains a dot or a space")
+		return fmt.Errorf("snapshot %s's interval must not include dots or a whitespaces", snapshotConfig.SnapshotName)
 	}
 	return nil
 }
@@ -83,8 +77,7 @@ func ValidateSnapshotConfig(snapshotConfig *structs.SnapshotConfig) error {
 func GetDefaultConfigsDir() (configsDir string, err error) {
 	homeDir, err := os.UserHomeDir()
 	if err != nil {
-		fmt.Println("Can't get user home dir: " + err.Error())
-		return "", err
+		return "", fmt.Errorf("can't get user's home directory: %s", err.Error())
 	}
 	configsDir = path.Join(homeDir, ".config/snapsync")
 	return configsDir, nil
