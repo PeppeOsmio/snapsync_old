@@ -54,16 +54,14 @@ func main() {
 			return
 		}
 		for _, snapshotInfo := range snapshotsInfo {
-			fmt.Println("")
-			fmt.Printf("Name: %s\n", snapshotInfo.SnapshotName)
-			fmt.Printf("Interval: %s\n", snapshotInfo.Interval)
-			fmt.Printf("Number: %d\n", snapshotInfo.Number)
 			size, err := snapshotInfo.Size()
+			sizeStr := ""
 			if err != nil {
-				fmt.Printf("Size: (error: %s)\n", err.Error())
+				sizeStr = fmt.Sprintf("can't evaluate snapshot size: %s", err.Error())
 			} else {
-				fmt.Printf("Size: %s\n", utils.HumanReadableSize(size))
+				sizeStr = utils.HumanReadableSize(size)
 			}
+			fmt.Printf("[%d] Snapshot: %s, Interval: %s, Size: %s\n", snapshotInfo.Number, snapshotInfo.SnapshotName, snapshotInfo.Interval, sizeStr)
 		}
 		return
 	}
