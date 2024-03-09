@@ -6,4 +6,4 @@ snapshots_dir: ./ss/test
 interval: daily
 retention: 7
 always_run_post_snapshot_commands: true
-# cron: "0 12,21 * * *"
+cron: "* * * * *"
